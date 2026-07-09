@@ -5,7 +5,10 @@ import { drawGradientBackground } from '../ui/background';
 import { GrinderRow, type ControlMode } from '../objects/GrinderRow';
 import type { GrinderControlStrategy } from '../controls/GrinderControlStrategy';
 import { LockedRowSwipeStrategy } from '../controls/LockedRowSwipeStrategy';
-import { IndependentDragStrategy } from '../controls/IndependentDragStrategy';
+// RAFA KALDIRILDI: Bağımsız slot-drag modu geçici olarak devre dışı (bug'lar giderilene
+// kadar). Dosya duruyor; geri açmak için bu import'u ve aşağıdaki makeStrategy/toggle
+// dallarını yeniden etkinleştir. Şimdilik oyun yalnızca 'lockedRow' (swipe) modunda.
+// import { IndependentDragStrategy } from '../controls/IndependentDragStrategy';
 import { SpawnManager } from '../managers/SpawnManager';
 import { MatchResolver } from '../managers/MatchResolver';
 import { ScoreManager } from '../managers/ScoreManager';
@@ -29,7 +32,6 @@ export class GameScene extends Phaser.Scene {
   private lastMatchXY: { x: number; y: number } | null = null;
 
   private fpsText?: Phaser.GameObjects.Text;
-  private schemeText?: Phaser.GameObjects.Text;
 
   constructor() {
     super(SceneKeys.Game);
@@ -56,7 +58,7 @@ export class GameScene extends Phaser.Scene {
     this.row = new GrinderRow(this, GameConfig.designWidth, GameConfig.layout.grinderRowY, this.mode);
     this.spawner = new SpawnManager(this, GameConfig.designHeight, this.row.laneCenters);
     this.spawner.applyDifficulty(this.difficulty.snapshot); // skor 0 → kolay tanıtım
-    this.strategy = this.makeStrategy(this.mode);
+    this.strategy = this.makeStrategy();
     this.strategy.attach();
 
     const catchLineY = GameConfig.layout.grinderRowY - GameConfig.layout.catchLineOffset;
@@ -101,19 +103,13 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private makeStrategy(mode: ControlMode): GrinderControlStrategy {
-    return mode === 'lockedRow'
-      ? new LockedRowSwipeStrategy(this, this.row)
-      : new IndependentDragStrategy(this, this.row);
-  }
-
-  private toggleScheme(): void {
-    this.strategy.detach();
-    this.mode = this.mode === 'lockedRow' ? 'independent' : 'lockedRow';
-    this.row.setMode(this.mode);
-    this.strategy = this.makeStrategy(this.mode);
-    this.strategy.attach();
-    this.schemeText?.setText(`Kontrol: ${this.strategy.label}  (değiştir)`);
+  /**
+   * RAFA KALDIRILDI: bağımsız slot-drag modu geçici kapalı → her zaman kilitli-satır
+   * swipe döner. Geri açmak için: IndependentDragStrategy import'unu aç ve mode'a göre
+   * dallandır (eski hâli git geçmişinde).
+   */
+  private makeStrategy(): GrinderControlStrategy {
+    return new LockedRowSwipeStrategy(this, this.row);
   }
 
   // --- efektler (temel juice; tam parçacık sistemi M7) ---
@@ -230,14 +226,14 @@ export class GameScene extends Phaser.Scene {
   private drawDebugControls(): void {
     this.fpsText = this.add.text(16, 190, '', { fontFamily: 'monospace', fontSize: '22px', color: '#7fffa0' });
 
-    this.schemeText = this.add
-      .text(GameConfig.designWidth / 2, 250, `Kontrol: ${this.strategy.label}  (değiştir)`, {
+    // RAFA KALDIRILDI: mod-değiştir toggle'ı kaldırıldı (drag modu kapalı). Sadece
+    // aktif modun etiketini statik göster.
+    this.add
+      .text(GameConfig.designWidth / 2, 250, `Kontrol: ${this.strategy.label}`, {
         fontFamily: 'Arial, sans-serif',
         fontSize: '26px',
         color: '#ffd166'
       })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
-    this.schemeText.on('pointerup', () => this.toggleScheme());
+      .setOrigin(0.5);
   }
 }

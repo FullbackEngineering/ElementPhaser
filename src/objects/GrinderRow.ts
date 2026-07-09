@@ -39,8 +39,6 @@ export class GrinderRow {
   private readonly slotX: number[] = [];
   /** grinderIndex -> slotIndex (independent modda permütasyon). */
   private readonly slotOf: number[] = [];
-  /** Swap tween'i sürerken lerp'in ezmemesi için kilitli grinder indeksleri. */
-  private readonly locked = new Set<number>();
 
   // lockedRow durumu
   private rowTargetX = 0;
@@ -96,7 +94,6 @@ export class GrinderRow {
     this.rowTargetX = 0;
     this.container.x = 0;
     this.draggedIndex = -1;
-    this.locked.clear();
     this.clearSelection();
     this.grinders.forEach((g, i) => {
       this.scene.tweens.killTweensOf(g);
@@ -114,7 +111,6 @@ export class GrinderRow {
   // --- independent (slot-tabanlı) API ---
   beginDrag(index: number): void {
     this.scene.tweens.killTweensOf(this.grinders[index]);
-    this.locked.delete(index);
     this.grinders[index].setScale(1);
     this.draggedIndex = index;
     this.dragX = this.grinders[index].x;
@@ -149,15 +145,20 @@ export class GrinderRow {
     for (const g of this.grinders) g.setHighlight(false);
   }
 
-  /** İki grinder'ı slotlarıyla birlikte animasyonlu yer değiştirir. */
+  /**
+   * İki grinder'ı slotlarıyla birlikte yer değiştirir. Pozisyon TEK KAYNAKtan
+   * (`slotOf` → `update()` lerp'i) sürülür; burada yalnızca kozmetik "pop" oynatılır.
+   * Eskiden pozisyonu tween ile taşıyıp `locked` ile lerp'i bloke ediyorduk; tween
+   * `killTweensOf` ile kesilince kilit hiç açılmıyor ve grinder'lar iç içe donuyordu.
+   */
   swapGrinders(a: number, b: number): void {
     if (a === b) return;
     const sa = this.slotOf[a];
     const sb = this.slotOf[b];
     this.slotOf[a] = sb;
     this.slotOf[b] = sa;
-    this.animateSwap(a);
-    this.animateSwap(b);
+    this.popScale(a);
+    this.popScale(b);
   }
 
   /** Verilen ekran X'ine en yakın grinder indeksi (yarıçap eşiği içinde), yoksa -1. */
@@ -195,35 +196,24 @@ export class GrinderRow {
       return;
     }
     this.grinders.forEach((g, i) => {
-      if (this.locked.has(i)) return; // swap tween'i sürüyor
       const target = i === this.draggedIndex ? this.dragX : this.slotX[this.slotOf[i]];
       g.x = Phaser.Math.Linear(g.x, target, t);
     });
   }
 
-  /** swapGrinders için: bir grinder'ı yeni slotuna zıplama + pop ile taşır. */
-  private animateSwap(i: number): void {
+  /** Yalnızca kozmetik "pop" (scale yoyo); pozisyona dokunmaz → lerp'i bloke etmez. */
+  private popScale(i: number): void {
     const g = this.grinders[i];
-    const targetX = this.slotX[this.slotOf[i]];
     this.scene.tweens.killTweensOf(g);
-    this.locked.add(i);
-    this.scene.tweens.add({
-      targets: g,
-      x: targetX,
-      duration: 300,
-      ease: 'Back.out',
-      onComplete: () => {
-        g.x = targetX;
-        this.locked.delete(i);
-      }
-    });
+    g.setScale(1);
     this.scene.tweens.add({
       targets: g,
       scaleX: 1.16,
       scaleY: 1.16,
       duration: 150,
       yoyo: true,
-      ease: 'Quad.out'
+      ease: 'Quad.out',
+      onComplete: () => g.setScale(1)
     });
   }
 

@@ -114,22 +114,19 @@ try {
   console.log('✓ Kilitli satır swipe çalışıyor');
   await page.screenshot({ path: `${OUT}/3-locked-swipe.png` });
 
-  // --- Şemayı değiştir (debug metni) → Bağımsız slot-drag (reorder) ---
-  await tap(360, 250);
-  await page.waitForTimeout(100);
-  // Slotlar: 120, 280, 440, 600. Fire(slot0) bir slot sağa sürüklenince slot1'e
-  // oturmalı; water boşalan slot0'a kaymalı (yer değiştirme / reorder).
-  const g0Before = await sceneVal(() => window.__game.scene.getScene('GameScene').row.grinders[0].x);
-  const g1Before = await sceneVal(() => window.__game.scene.getScene('GameScene').row.grinders[1].x);
-  await swipe(120, 1130, 300); // fire'ı slot1 bölgesine sürükle (midpoint 200'ü geçer)
-  await page.waitForTimeout(350);
-  const g0After = await sceneVal(() => window.__game.scene.getScene('GameScene').row.grinders[0].x);
-  const g1After = await sceneVal(() => window.__game.scene.getScene('GameScene').row.grinders[1].x);
-  console.log(`  slot-drag: fire ${g0Before.toFixed(0)}→${g0After.toFixed(0)} (hedef 280), water ${g1Before.toFixed(0)}→${g1After.toFixed(0)} (hedef 120)`);
-  assert(Math.abs(g0After - 280) < 40, 'Fire slot1 merkezine oturmadı (snap yok)');
-  assert(Math.abs(g1After - 120) < 40, 'Water boşalan slot0a kaymadı (reorder yok)');
-  console.log('✓ Bağımsız slot-drag: en yakın slota oturuyor ve komşuyla yer değiştiriyor');
-  await page.screenshot({ path: `${OUT}/4-independent-drag.png` });
+  // --- RAFA KALDIRILDI: Bağımsız slot-drag modu geçici kapalı (bug'lar giderilene kadar).
+  //     Mod-değiştir toggle'ı GameScene'den kaldırıldığından bu bölüm devre dışı.
+  //     Geri açıldığında bu bloğu yeniden etkinleştir. ---
+  // await tap(360, 250);
+  // await page.waitForTimeout(100);
+  // const g0Before = await sceneVal(() => window.__game.scene.getScene('GameScene').row.grinders[0].x);
+  // const g1Before = await sceneVal(() => window.__game.scene.getScene('GameScene').row.grinders[1].x);
+  // await swipe(120, 1130, 300);
+  // await page.waitForTimeout(350);
+  // const g0After = await sceneVal(() => window.__game.scene.getScene('GameScene').row.grinders[0].x);
+  // const g1After = await sceneVal(() => window.__game.scene.getScene('GameScene').row.grinders[1].x);
+  // assert(Math.abs(g0After - 280) < 40, 'Fire slot1 merkezine oturmadı (snap yok)');
+  // assert(Math.abs(g1After - 120) < 40, 'Water boşalan slot0a kaymadı (reorder yok)');
 
   // --- M4/M5: 3× object:missed → can biter → otomatik GameOver (deterministik) ---
   await page.evaluate(() => {

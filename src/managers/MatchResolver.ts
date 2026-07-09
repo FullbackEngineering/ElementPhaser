@@ -27,10 +27,20 @@ export class MatchResolver {
   ) {}
 
   update(): void {
+    // `items`, SpawnManager'ın CANLI aktif-obje dizisidir (kopya değil, performans için).
+    // GERİYE doğru geziyoruz: `despawn()` içteki splice mevcut indeksin ALTINDAKİ
+    // elemanları kaydırdığında bile hiçbir obje atlanmaz veya İKİ KEZ ziyaret edilmez.
     const items = this.spawner.items;
     for (let i = items.length - 1; i >= 0; i--) {
       const obj = items[i];
-      if (obj.y < this.catchLineY) continue;
+      // TEK-İŞLEME GARANTİSİ + use-after-free koruması:
+      //  - `!obj.active`: obje aynı frame içinde başka bir yolla (ekran-dışı despawn ya
+      //    da bir event dinleyicisinden gelen olası re-entrancy) zaten havuza dönmüşse
+      //    `deactivate()` onu pasif yapmıştır → BİR DAHA işlemeyiz (çift-despawn imkânsız).
+      //  - Bir obje yalnızca `grinderUnderX` ile TEK bir öğütücüye eşlenir; iki slot
+      //    üst üste binse bile ilk isabet alınır → "aynı item birden çok slotta işlenir"
+      //    durumu mimari gereği oluşamaz.
+      if (!obj.active || obj.y < this.catchLineY) continue;
 
       const grinder = this.row.grinderUnderX(obj.x);
       const outcome = resolveMatch(obj.element, grinder ? grinder.element : null);

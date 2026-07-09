@@ -15,7 +15,8 @@ export class IndependentDragStrategy implements GrinderControlStrategy {
   /** Basış tap mı drag mı: bu kadar px hareket edilince drag'e döner. */
   private static readonly DRAG_THRESHOLD = 14;
 
-  private activePointerId = -1;
+  /** Aktif jestin pointer'ı (referansla; Phaser Pointer nesnelerini yeniden kullanır). */
+  private activePointer: Phaser.Input.Pointer | null = null;
   private candidateIndex = -1;
   private grabOffset = 0;
   private downX = 0;
@@ -41,16 +42,19 @@ export class IndependentDragStrategy implements GrinderControlStrategy {
     this.scene.input.off('pointerup', this.onUp);
     this.scene.input.off('pointerupoutside', this.onUp);
     this.clearSelection();
-    this.activePointerId = -1;
-    this.candidateIndex = -1;
-    this.dragging = false;
+    this.resetGesture();
   }
 
   private readonly onDown = (p: Phaser.Input.Pointer): void => {
-    if (this.activePointerId !== -1) return; // tek jest: başka pointer meşgulken yok say
+    // Kendini-iyileştirme: önceki jestin pointer'ı artık BASILI değilse (kayıp
+    // pointerup / touchcancel / ikinci parmak) takılı state'i temizle. Aksi halde
+    // activePointer sonsuza dek dolu kalır → hiçbir grinder tutulamaz, "yenileyene
+    // kadar tepki vermez". Bu tek satır o donma sınıfını imkânsız kılar.
+    if (this.activePointer && !this.activePointer.isDown) this.resetGesture();
+    if (this.activePointer) return; // tek jest: başka pointer meşgulken yok say
     const idx = this.row.pickGrinderAt(p.x, p.y);
     if (idx < 0) return;
-    this.activePointerId = p.id;
+    this.activePointer = p;
     this.candidateIndex = idx;
     this.grabOffset = p.x - this.row.grinders[idx].x;
     this.downX = p.x;
@@ -59,7 +63,7 @@ export class IndependentDragStrategy implements GrinderControlStrategy {
   };
 
   private readonly onMove = (p: Phaser.Input.Pointer): void => {
-    if (p.id !== this.activePointerId || this.candidateIndex < 0) return;
+    if (p !== this.activePointer || this.candidateIndex < 0) return;
     if (!this.dragging) {
       const dist = Math.hypot(p.x - this.downX, p.y - this.downY);
       if (dist < IndependentDragStrategy.DRAG_THRESHOLD) return; // hâlâ tap olabilir
@@ -71,16 +75,18 @@ export class IndependentDragStrategy implements GrinderControlStrategy {
   };
 
   private readonly onUp = (p: Phaser.Input.Pointer): void => {
-    if (p.id !== this.activePointerId) return;
-    if (this.dragging) {
-      this.row.endDrag();
-    } else {
-      this.handleTap(this.candidateIndex);
-    }
-    this.activePointerId = -1;
+    if (p !== this.activePointer) return;
+    if (!this.dragging) this.handleTap(this.candidateIndex); // tap-seçim jest state'inden bağımsız kalır
+    this.resetGesture();
+  };
+
+  /** Jest state'ini sıfırla; sürükleme yarıda kaldıysa grinder'ı slotuna oturt (tap-seçimi korunur). */
+  private resetGesture(): void {
+    if (this.dragging) this.row.endDrag();
+    this.activePointer = null;
     this.candidateIndex = -1;
     this.dragging = false;
-  };
+  }
 
   private handleTap(index: number): void {
     if (this.selectedIndex === -1) {
