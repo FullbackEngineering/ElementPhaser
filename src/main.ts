@@ -3,6 +3,7 @@ import { GameConfig } from './config/GameConfig';
 import { BootScene } from './scenes/BootScene';
 import { PreloadScene } from './scenes/PreloadScene';
 import { MenuScene } from './scenes/MenuScene';
+import { SettingsScene } from './scenes/SettingsScene';
 import { GameScene } from './scenes/GameScene';
 import { UIScene } from './scenes/UIScene';
 import { GameOverScene } from './scenes/GameOverScene';
@@ -27,7 +28,7 @@ const config: Phaser.Types.Core.GameConfig = {
   // Arcade Physics: düşen objeler velocity ile düşer; M4'te overlap tespiti.
   // Yerçekimi yok (0) — hız manuel ayarlanır (bkz. ARCHITECTURE.md §2).
   physics: { default: 'arcade', arcade: { gravity: { x: 0, y: 0 }, debug: false } },
-  scene: [BootScene, PreloadScene, MenuScene, GameScene, UIScene, GameOverScene]
+  scene: [BootScene, PreloadScene, MenuScene, SettingsScene, GameScene, UIScene, GameOverScene]
 };
 
 const game = new Phaser.Game(config);

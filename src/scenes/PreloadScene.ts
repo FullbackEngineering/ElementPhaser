@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { SceneKeys } from '../constants/sceneKeys';
 import { GameConfig, Palette } from '../config/GameConfig';
 import { drawGradientBackground } from '../ui/background';
-import { OBJECT_SPRITES } from '../constants/assetKeys';
+import { OBJECT_SPRITES, Audio } from '../constants/assetKeys';
 
 /**
  * Splash + gerçek asset yüklemesi. Düşen obje sprite'ları `public/sprites/`'ten
@@ -46,6 +46,9 @@ export class PreloadScene extends Phaser.Scene {
 
     // Gerçek obje sprite yüklemeleri (frame anahtarı = dosya adı).
     for (const key of OBJECT_SPRITES) this.load.image(key, `sprites/${key}.png`);
+
+    // Arka plan müziği (döngü). Yüklenemezse oyun sessiz devam eder (AudioManager guard'lı).
+    this.load.audio(Audio.musicMain, `audio/${Audio.musicMain}.mp3`);
   }
 
   create(): void {

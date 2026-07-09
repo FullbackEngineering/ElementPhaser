@@ -9,6 +9,11 @@ export const Atlas = {
   Main: 'atlas_main'
 } as const;
 
+/** Ses anahtarları (= `public/audio/<ad>.mp3`). */
+export const Audio = {
+  musicMain: 'music_main'
+} as const;
+
 /** Obje frame anahtarı = dosya adı. Texture yoksa çağıran placeholder'a düşer. */
 export const objTex = (element: ElementType, key: string): string => `obj_${element}_${key}`;
 
