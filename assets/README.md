@@ -31,7 +31,7 @@ assets/
 - [x] Power-up: magnet, double-score(2x), freeze çerçevesi
 - [x] FX: ember, smoke, splash, splat
 - [ ] **Earth objeleri** (yaprak, ağaç, taş, tohum, elma, mantar…) — aynı stilde üretilecek
-- [ ] **Air objeleri** (tüy, balon, kuş, kelebek, kağıt uçak, uçurtma…) — aynı stilde üretilecek
+- [~] **Air objeleri** — `obj_air_tornado` eklendi (kasırga sheet'inden kesildi); tüy/balon/kuş/kelebek hâlâ placeholder
 - [ ] Ses (M8)
 
 ## Slicing / atlas

@@ -18,7 +18,6 @@ export const OBJECTS_BY_ELEMENT: Record<ElementType, ObjectDef[]> = {
   ],
   water: [
     { key: 'drop', element: 'water', emoji: '💧', size: 1.0 },
-    { key: 'ice', element: 'water', emoji: '🧊', size: 1.05 },
     { key: 'snow', element: 'water', emoji: '❄️', size: 0.95 },
     { key: 'fish', element: 'water', emoji: '🐟', size: 1.05 },
     { key: 'bubble', element: 'water', emoji: '🫧', size: 0.95 }
@@ -31,6 +30,7 @@ export const OBJECTS_BY_ELEMENT: Record<ElementType, ObjectDef[]> = {
     { key: 'mushroom', element: 'earth', emoji: '🍄', size: 1.0 }
   ],
   air: [
+    { key: 'tornado', element: 'air', emoji: '🌪️', size: 1.1 }, // gerçek sprite: obj_air_tornado.png
     { key: 'feather', element: 'air', emoji: '🪶', size: 1.0 },
     { key: 'balloon', element: 'air', emoji: '🎈', size: 1.1 },
     { key: 'bird', element: 'air', emoji: '🐦', size: 1.05 },

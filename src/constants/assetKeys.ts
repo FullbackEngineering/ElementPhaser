@@ -51,5 +51,6 @@ export const OBJECT_SPRITES: readonly string[] = [
   objTex('water', 'ice'),
   objTex('water', 'snow'),
   objTex('water', 'fish'),
-  objTex('water', 'bubble')
+  objTex('water', 'bubble'),
+  objTex('air', 'tornado')
 ];
