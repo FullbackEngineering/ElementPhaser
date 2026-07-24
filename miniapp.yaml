@@ -1,0 +1,19 @@
+name: "Element Grinder"
+menuButton:
+    enabled: true
+    opacity: 1.0
+    color: "#ffd166"
+    position: "top-right"
+orientation: "portrait"
+env:
+    buildMode: "production"
+offered_age_rating: 4
+# miniappid buraya ELLE yazılmaz — developer.gametegra.com'da (DevPortal) mini-game
+# kaydı oluşturup `gametegra connect` çalıştırınca otomatik eklenir.
+
+# Vite build çıktısı ./dist içine üretilir (npm run build:gametegra → PWA/SW kapalı).
+# build_path dist'in KARDEŞİ (içinde DEĞİL) → zip kendi kendini paketlemez.
+source_path: "./dist"
+build_path: "./gametegra-release"
+build_name: "miniapp.zip"
+miniappid: "2080694227456495616"

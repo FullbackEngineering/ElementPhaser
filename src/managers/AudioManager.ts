@@ -41,6 +41,20 @@ export class AudioManager {
     this.music.play();
   }
 
+  /**
+   * Arka plana geçince tüm sesi duraklat. Platform genelde otomatik duraklatır ama
+   * geri döndürmez (bkz. gametegra best-practices) — bu yüzden resume elle yapılır.
+   */
+  pauseAll(): void {
+    this.game.sound.pauseAll();
+  }
+
+  /** Ön plana dönünce sesi devam ettir + mute/volume'u yeniden uygula. */
+  resumeAll(): void {
+    this.game.sound.resumeAll();
+    this.apply();
+  }
+
   setMusicVolume(volume: number): void {
     this.save.setMusicVolume(volume);
     this.apply();

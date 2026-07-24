@@ -3,6 +3,7 @@ export const SceneKeys = {
   Preload: 'PreloadScene',
   Menu: 'MenuScene',
   Settings: 'SettingsScene',
+  Leaderboard: 'LeaderboardScene',
   Game: 'GameScene',
   UI: 'UIScene',
   GameOver: 'GameOverScene'

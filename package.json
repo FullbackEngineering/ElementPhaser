@@ -12,9 +12,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "gen:icons": "node scripts/gen-icons.mjs",
-    "smoke": "node scripts/smoke.mjs http://localhost:5173/?canvas .smoke"
+    "smoke": "node scripts/smoke.mjs http://localhost:5173/?canvas .smoke",
+    "build:gametegra": "tsc --noEmit && vite build --mode gametegra"
   },
   "dependencies": {
+    "@gametegra/sdk": "^0.3.8",
     "phaser": "^3.80.0"
   },
   "devDependencies": {

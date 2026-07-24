@@ -16,7 +16,7 @@ export const GameConfig = {
   // Başlangıç kontrol modu: 'lockedRow' = kilitli satır swipe · 'independent' = bağımsız slot drag + tap-swap.
   // (Oyuncu menüden seçecek — M6; şu an debug toggle ile değişiyor.)
   controlScheme: 'lockedRow' as 'lockedRow' | 'independent',
-  debug: true, // debug katmanı (FPS/obje sayacı + çalışma anında mod değiştirme metni); yayında false yap
+  debug: false, // ekran-üstü debug katmanı (FPS/obje sayacı + kontrol modu etiketi). Yayında false.
 
   // Ekran yerleşimi (tasarım px, 720×1280 referans). Öğütücü satırını yukarı çekmek
   // telefonda alt tarayıcı çubuğu/güvenli-alan altında kalmasını önler.
@@ -44,7 +44,18 @@ export const GameConfig = {
       { fromScore: 1200, spawnIntervalMs: 1200, speedMin: 450, speedMax: 470, maxConcurrent: 2, label: 'Kademe 4' },
       { fromScore: 1500, spawnIntervalMs: 1000, speedMin: 450, speedMax: 470, maxConcurrent: 3, label: 'Kademe 5' }
     ]
-  } satisfies DifficultyConfig
+  } satisfies DifficultyConfig,
+
+  // Gametegra reklam-ile-revive ("bir şans daha"). Can bitince oyuncu ödüllü reklam
+  // izleyip 1 canla devam edebilir — oyun başına en fazla `maxRevives` kez.
+  revive: {
+    maxRevives: 2, // tek bir oyunda toplam kaç kez revive edilebilir
+    countdownSec: 5, // teklif overlay'i kaç saniye sonra otomatik "vazgeç"e döner
+    livesOnRevive: 1, // revive başına verilen can
+    graceMs: 1500, // revive sonrası "HAZIR OL" hazırlık/dokunulmazlık süresi (ms)
+    adKey: 'revive', // Gametegra reklam slotu anahtarı (rewarded)
+    retryAdKey: 'retry' // Game Over → tekrar oyna interstitial slotu
+  }
 };
 
 // Premium/dark tema paleti (GDD "Dark Mode by default").

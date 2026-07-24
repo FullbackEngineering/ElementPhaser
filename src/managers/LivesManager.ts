@@ -20,6 +20,12 @@ export class LivesManager {
     return this.livesLeft;
   }
 
+  /** Revive: can ekler ve `life:changed` yayınlar (HUD kalpleri geri dolar). */
+  grant(amount = 1): void {
+    this.livesLeft += amount;
+    this.bus.emit('life:changed', { lives: this.livesLeft });
+  }
+
   private readonly onLoseLife = (): void => {
     if (this.livesLeft <= 0) return;
     this.livesLeft--;

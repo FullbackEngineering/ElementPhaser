@@ -4,6 +4,7 @@ import { BootScene } from './scenes/BootScene';
 import { PreloadScene } from './scenes/PreloadScene';
 import { MenuScene } from './scenes/MenuScene';
 import { SettingsScene } from './scenes/SettingsScene';
+import { LeaderboardScene } from './scenes/LeaderboardScene';
 import { GameScene } from './scenes/GameScene';
 import { UIScene } from './scenes/UIScene';
 import { GameOverScene } from './scenes/GameOverScene';
@@ -28,12 +29,13 @@ const config: Phaser.Types.Core.GameConfig = {
   // Arcade Physics: düşen objeler velocity ile düşer; M4'te overlap tespiti.
   // Yerçekimi yok (0) — hız manuel ayarlanır (bkz. ARCHITECTURE.md §2).
   physics: { default: 'arcade', arcade: { gravity: { x: 0, y: 0 }, debug: false } },
-  scene: [BootScene, PreloadScene, MenuScene, SettingsScene, GameScene, UIScene, GameOverScene]
+  scene: [BootScene, PreloadScene, MenuScene, SettingsScene, LeaderboardScene, GameScene, UIScene, GameOverScene]
 };
 
 const game = new Phaser.Game(config);
 
-// Debug'ta smoke-test / geliştirme için Phaser instance'ını dışa aç.
-if (GameConfig.debug) {
+// Geliştirme (Vite dev) / smoke-test için Phaser instance'ını dışa aç — production
+// build'de (import.meta.env.DEV=false) açılmaz, ekrana debug bilgisi sızmaz.
+if (import.meta.env.DEV || GameConfig.debug) {
   (window as unknown as { __game: Phaser.Game }).__game = game;
 }

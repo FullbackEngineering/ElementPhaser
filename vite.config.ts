@@ -2,13 +2,15 @@ import { defineConfig } from 'vitest/config';
 import { VitePWA } from 'vite-plugin-pwa';
 
 // base: './' → itch.io / Poki / statik hosting altında da çalışsın (göreli yollar).
-export default defineConfig({
+// `--mode gametegra`: Gametegra mini-app paketi için PWA/service-worker KAPALI —
+// SuperApp WebView'inde SW cache'i eski içerik sunabiliyor (bkz. gametegra known-issues).
+export default defineConfig(({ mode }) => ({
   base: './',
   server: { host: true, port: 5173 },
   build: { target: 'es2020', assetsInlineLimit: 0 },
   // jsdom: EventBus (Phaser EventEmitter) ve SaveManager (localStorage) node'da koşsun.
   test: { environment: 'jsdom', include: ['src/**/*.test.ts'] },
-  plugins: [
+  plugins: mode === 'gametegra' ? [] : [
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
@@ -29,4 +31,4 @@ export default defineConfig({
       workbox: { globPatterns: ['**/*.{js,css,html,png,svg,woff2}'] }
     })
   ]
-});
+}));

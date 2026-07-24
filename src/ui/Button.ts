@@ -15,6 +15,8 @@ export interface ButtonConfig {
 
 /** Yeniden kullanılabilir yuvarlatılmış buton (hover/press mikro-animasyonlu). */
 export class Button extends Phaser.GameObjects.Container {
+  private readonly labelText: Phaser.GameObjects.Text;
+
   constructor(scene: Phaser.Scene, cfg: ButtonConfig) {
     super(scene, cfg.x, cfg.y);
 
@@ -33,6 +35,7 @@ export class Button extends Phaser.GameObjects.Container {
         fontStyle: 'bold'
       })
       .setOrigin(0.5);
+    this.labelText = label;
 
     this.add([bg, label]);
     this.setSize(cfg.width, cfg.height);
@@ -53,5 +56,11 @@ export class Button extends Phaser.GameObjects.Container {
     });
 
     scene.add.existing(this);
+  }
+
+  /** Buton metnini günceller (örn. geri sayım). */
+  setLabel(text: string): this {
+    this.labelText.setText(text);
+    return this;
   }
 }

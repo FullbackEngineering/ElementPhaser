@@ -3,6 +3,7 @@ import { SceneKeys } from '../constants/sceneKeys';
 import { GameConfig, Palette } from '../config/GameConfig';
 import { drawGradientBackground } from '../ui/background';
 import { Button } from '../ui/Button';
+import { gametegra } from '../core/gametegra';
 
 interface GameOverData {
   score: number;
@@ -50,13 +51,27 @@ export class GameOverScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    // Gametegra leaderboard satırı (host'tan gelince görünür).
+    const leaderboardText = this.add
+      .text(cx, 720, '', {
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '26px',
+        color: Palette.textDim,
+        align: 'center'
+      })
+      .setOrigin(0.5)
+      .setVisible(false);
+
+    // Standart game-over SDK paketi (titreşim + host highscore + leaderboard + analytics).
+    void this.runGametegra(score, best, leaderboardText);
+
     new Button(this, {
       x: cx,
       y: 880,
       width: 380,
       height: 100,
       label: '↻  TEKRAR OYNA',
-      onClick: () => this.scene.start(SceneKeys.Game)
+      onClick: () => this.retry(score)
     });
 
     new Button(this, {
@@ -69,5 +84,37 @@ export class GameOverScene extends Phaser.Scene {
       textColor: Palette.textLight,
       onClick: () => this.scene.start(SceneKeys.Menu)
     });
+  }
+
+  /** Titreşim + host en-yüksek-skor kaydı + leaderboard + analytics — paralel, oyunu bekletmez. */
+  private async runGametegra(
+    score: number,
+    localBest: number,
+    leaderboardText: Phaser.GameObjects.Text
+  ): Promise<void> {
+    gametegra.vibrate();
+
+    const [previousBest, top] = await Promise.all([
+      gametegra.loadHighScore(),
+      gametegra.submitAndReadLeaderboard(score)
+    ]);
+
+    const isNewBest = previousBest === null || score > previousBest;
+    if (isNewBest) {
+      void gametegra.saveHighScore(score);
+      gametegra.report('new_high_score', { score, previousBest: previousBest ?? localBest });
+    }
+
+    if (top && this.scene.isActive()) {
+      leaderboardText.setText(`Zirvedeki skor: ${top.score}${top.isMe ? ' (sen)' : ''}`).setVisible(true);
+    }
+  }
+
+  private retry(previousScore: number): void {
+    gametegra.report('retry', { previousScore });
+    // Interstitial'ı beklet, sonra (başarısız/timeout olsa da) her koşulda oyunu başlat.
+    void gametegra
+      .showInterstitialAd(GameConfig.revive.retryAdKey, 'game_over_retry')
+      .finally(() => this.scene.start(SceneKeys.Game));
   }
 }

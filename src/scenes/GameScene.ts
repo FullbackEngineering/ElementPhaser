@@ -16,6 +16,8 @@ import { LivesManager } from '../managers/LivesManager';
 import { DifficultyManager } from '../managers/DifficultyManager';
 import type { SaveManager } from '../managers/SaveManager';
 import { EventBus } from '../core/EventBus';
+import { gametegra } from '../core/gametegra';
+import { ReviveOverlay } from '../ui/ReviveOverlay';
 
 export class GameScene extends Phaser.Scene {
   private bus!: EventBus;
@@ -29,6 +31,9 @@ export class GameScene extends Phaser.Scene {
 
   private mode: ControlMode = GameConfig.controlScheme;
   private over = false;
+  private frozen = false; // revive teklifi/hazırlık sırasında oynanış donar
+  private revivesUsed = 0;
+  private reviveOverlay?: ReviveOverlay;
   private lastMatchXY: { x: number; y: number } | null = null;
 
   private fpsText?: Phaser.GameObjects.Text;
@@ -39,6 +44,9 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.over = false;
+    this.frozen = false;
+    this.revivesUsed = 0;
+    this.reviveOverlay = undefined;
     this.lastMatchXY = null;
 
     // Tur-başına taze EventBus → eski turun listener'ları sızmaz.
@@ -66,15 +74,21 @@ export class GameScene extends Phaser.Scene {
 
     this.bus.on('life:changed', this.onLifeChanged);
     this.bus.on('difficulty:changed', (s) => this.spawner.applyDifficulty(s));
-    this.bus.on('milestone:reached', (p) => this.celebrate(p.tier, p.label));
+    this.bus.on('milestone:reached', (p) => {
+      this.celebrate(p.tier, p.label);
+      gametegra.report('level_complete', { level: p.tier, score: p.score });
+    });
 
     if (GameConfig.debug) this.drawDebugControls();
 
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.strategy.detach());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.strategy.detach();
+      this.reviveOverlay?.destroy();
+    });
   }
 
   update(_time: number, delta: number): void {
-    if (this.over) return;
+    if (this.over || this.frozen) return;
     this.spawner.update(delta);
     this.matchResolver.update();
     this.row.update(delta);
@@ -87,8 +101,54 @@ export class GameScene extends Phaser.Scene {
 
   // --- oyun akışı ---
   private readonly onLifeChanged = (p: { lives: number }): void => {
-    if (p.lives <= 0) this.gameOver();
+    if (p.lives > 0 || this.over || this.frozen) return;
+    // Can bitti — revive hakkı varsa reklam teklifi göster, yoksa Game Over.
+    if (this.revivesUsed < GameConfig.revive.maxRevives) this.offerRevive();
+    else this.gameOver();
   };
+
+  /** Oynanışı dondurup "bir şans daha?" reklam teklifini gösterir. */
+  private offerRevive(): void {
+    this.frozen = true;
+    this.physics.pause(); // düşen objeler havada donar (Arcade body'ler durur)
+
+    this.reviveOverlay = new ReviveOverlay(this, {
+      remaining: GameConfig.revive.maxRevives - this.revivesUsed,
+      countdownSec: GameConfig.revive.countdownSec,
+      onWatch: () => this.watchAdForRevive(),
+      onDecline: () => {
+        this.reviveOverlay?.destroy();
+        this.reviveOverlay = undefined;
+        this.gameOver();
+      }
+    });
+  }
+
+  private async watchAdForRevive(): Promise<void> {
+    this.reviveOverlay?.showLoading();
+    const rewarded = await gametegra.showRewardedAd(GameConfig.revive.adKey, 'game_over_revive');
+    if (!this.scene.isActive()) return; // güvenlik: sahne bu arada kapandıysa dokunma
+    if (rewarded) this.doRevive();
+    else {
+      this.reviveOverlay?.destroy();
+      this.reviveOverlay = undefined;
+      this.gameOver();
+    }
+  }
+
+  private doRevive(): void {
+    this.revivesUsed++;
+    gametegra.report('revive', { reviveCount: this.revivesUsed, score: this.scoreManager.score });
+
+    this.spawner.reset(); // ekranı temizle
+    this.livesManager.grant(GameConfig.revive.livesOnRevive);
+
+    this.reviveOverlay?.showGrace(GameConfig.revive.graceMs, () => {
+      this.reviveOverlay = undefined;
+      this.physics.resume();
+      this.frozen = false;
+    });
+  }
 
   private gameOver(): void {
     if (this.over) return;

@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Gametegra — Promo</title>
+<style>
+  html, body { margin: 0; background: #000; overflow: hidden; }
+  #stage { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="1080" height="1920"></canvas>
+<!-- real gameplay stills as data: URIs (file:// images would taint the canvas) -->
+<script src="shots.js"></script>
+<script>
+// ==========================================================================
+// Gametegra social promo — portrait 9:16, deterministic, frame-driven.
+//
+// RE-THEME A NEW GAME BY EDITING THE `BRIEF` BLOCK BELOW. The scene code and
+// the render/encode pipeline (record.mjs) stay the same; only the BRIEF's
+// copy, palette and mechanic values change per game.
+//
+// The default BRIEF targets "Do Not Panic!" (find the target number). If a
+// game's core mechanic is genuinely different (dodge, match, stack, tap-rhythm…),
+// keep the intro / HUD / end-card scaffold + the pipeline, and adapt the
+// gameplay scene functions (spawnNumbers / stepNumbers / drawNumbers /
+// drawScanRing / drawTapAndFind) to that mechanic.
+// ==========================================================================
+
+// Themed for ELEMENT GRINDER (Phaser 3 hypercasual reflex game).
+// Identity pulled from the game's own source: src/config/GameConfig.ts (Palette)
+// and MenuScene (stacked ELEMENT / GRINDER wordmark, gold CTA).
+const BRIEF = {
+  duration: 6.6,                                   // seconds (keep 5–7 for reels)
+
+  // --- copy ---
+  kicker:   'REFLEX ARCADE',                       // small label above the logo
+  brand:    'ELEMENT GRINDER',                     // intro logo (single line)
+  brandLines: ['ELEMENT', 'GRINDER'],              // end-card logo (stacked, like the menu)
+  subtitle: 'MATCH THE ELEMENT · KEEP THE COMBO',  // under the intro logo
+  hudTag:   'MATCH THE ELEMENT',                   // HUD mission label
+  levelLabel: 'LVL 1 · WARM UP',                   // HUD top-left (game: 'Isınma')
+  tagline:  'Four elements. One row. Do not miss.',// end-card line
+  cta:      'PLAY NOW  ▶',                         // end-card button
+  platform: 'G A M E T E G R A',                   // wordmark at the very bottom
+
+  // --- palette — every value is the game's real hex (GameConfig.ts Palette) ---
+  palette: {
+    bg:     '#0f1226',   // Palette.bgBottom
+    accent: '#ffd166',   // Palette.accent — the gold signal colour (combo/CTA/wordmark)
+    success:'#8bc34a',   // Palette.earth
+    focus:  '#42a5f5',   // Palette.water
+    warn:   '#ff7043',   // Palette.fire
+    urgent: '#ff5a7a',   // Palette.heart
+    muted:  '#9aa3c7',   // Palette.textDim
+    faint:  '#5b6392',
+    white:  '#f5f7ff',   // Palette.textLight
+  },
+  font: '"DejaVu Sans Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+
+  // --- mechanic: slide the grinder row so the right grinder eats the element ---
+  // Element order matches the game's ELEMENTS + Palette element colours.
+  mechanic: {
+    elements: [
+      { key: 'fire',  emoji: '🔥', color: '#ff7043' },
+      { key: 'water', emoji: '💧', color: '#42a5f5' },
+      { key: 'earth', emoji: '🌱', color: '#8bc34a' },
+      { key: 'air',   emoji: '💨', color: '#b0bec5' },
+    ],
+    panel: '#232a4d',                               // Palette.panel — HUD band
+    lives: 3,                                       // GameConfig.startingLives
+    best: 45200,
+    startScore: 320,                                // the run is already going when we cut in
+    // the hero catch (el = index into elements, lane = which column it falls in)
+    hit: { label: 'PERFECT', color: 'accent', el: 1, lane: 2, pts: 120 },
+    combos: [                                       // montage escalation (3)
+      { label: 'COMBO x2',  color: 'warn',    el: 0, lane: 0, pts: 240 },
+      { label: 'COMBO x3',  color: 'success', el: 2, lane: 3, pts: 360 },
+      { label: 'x5 INSANE!', color: 'accent', el: 3, lane: 3, pts: 900 },
+    ],
+  },
+
+  // --- real game assets (optional; pulled from the game's project files) ---
+  // Paths are relative to this file, or data: URIs. Leave null/[] to use the
+  // text logo + procedural background. Use extract-brief.mjs to discover them.
+  media: {
+    logo:  null,   // no logo asset in the project — the stacked text logo matches the menu
+    shots: window.__SHOTS ?? [], // real stills from the running game (see embed-shots.mjs)
+  },
+};
+
+// ==========================================================================
+const W = 1080, H = 1920;
+const FPS = 60;
+const DURATION = BRIEF.duration;
+const FRAMES = Math.round(DURATION * FPS);
+const DT = 1 / FPS;
+
+const cv = document.getElementById('stage');
+const ctx = cv.getContext('2d');
+
+const C = BRIEF.palette;
+const col = k => C[k] || k;                          // palette key → hex (or passthrough)
+const FONT = BRIEF.font;
+
+// timeline scaled so any BRIEF.duration keeps the same rhythm (tuned at 6.6s)
+const S = DURATION / 6.6;
+const T = {
+  introIn: 0.10, introHold: 0.95 * S, boot: 1.10 * S, reveal: 1.55 * S,
+  burst: 1.75 * S, scanStart: 2.55 * S, find: 3.45 * S, findEnd: 4.05 * S,
+  m1: 4.35 * S, m2: 4.80 * S, m3: 5.15 * S, alarm: 4.60 * S,
+  outStart: 5.35 * S, outCard: 5.70 * S,
+};
+
+// ---- math helpers --------------------------------------------------------
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp  = (a, b, t) => a + (b - a) * t;
+const smooth = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
+const ramp = (t, a, b) => smooth((t - a) / (b - a));
+const easeOutBack = t => { const c = 1.70158; t -= 1; return 1 + (c + 1) * t * t * t + c * t * t; };
+const easeOutCubic = t => 1 - Math.pow(1 - clamp(t,0,1), 3);
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// Pinned locale: the renderer's host locale must not change the digits.
+const num = n => Math.round(n).toLocaleString('en-US');
+
+// Largest size ≤ max that keeps txt inside `target` px — a long brand must not
+// run into the frame edge (or out of a platform's safe area).
+function fitSize(txt, max, target) {
+  ctx.save();
+  ctx.font = `bold ${max}px ${FONT}`;
+  const w = ctx.measureText(txt).width;
+  ctx.restore();
+  return w > target ? Math.floor(max * target / w) : max;
+}
+
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+function glowText(txt, x, y, size, color, glow, glowBlur, align = 'center', weight = 'bold', spacing = 0) {
+  ctx.save();
+  ctx.font = `${weight} ${size}px ${FONT}`;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+  if (spacing > 0) {
+    ctx.textAlign = 'left';
+    const chars = txt.split('');
+    let total = 0;
+    for (const ch of chars) total += ctx.measureText(ch).width + spacing;
+    total -= spacing;
+    let cx = align === 'center' ? x - total / 2 : align === 'right' ? x - total : x;
+    for (const ch of chars) {
+      if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = glowBlur; }
+      ctx.fillStyle = color;
+      ctx.fillText(ch, cx, y);
+      cx += ctx.measureText(ch).width + spacing;
+    }
+    ctx.restore();
+    return;
+  }
+  if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = glowBlur; }
+  ctx.fillStyle = color;
+  ctx.fillText(txt, x, y);
+  ctx.restore();
+}
+
+// ==========================================================================
+// world state
+// ==========================================================================
+const M = BRIEF.mechanic;
+const EL = M.elements;
+let rng, fallers, particles, ripples, shake, scoreShown, scoreTarget, curFrame;
+let heroEnt = null, comboFlash = null, clock = 0;
+
+const PLAY_TOP = 320;
+// Geometry mirrors the game's 720×1280 layout scaled ×1.5 (GameConfig.layout).
+const LANES = [180, 420, 660, 900];   // 4 columns = the 4 grinder rest positions
+const SLOT = 240;                     // lane spacing
+const GRINDER_Y = 1590;               // layout.grinderRowY 1060 ×1.5
+const CATCH_Y = GRINDER_Y - 120;      // layout.matchLineOffset 80 ×1.5
+const BOX = 210;                      // grinder box size
+const OBJ_R = 64;                     // falling object radius
+
+// Fall time for a normal element ≈ the game's real speeds (~600 px/s). Every
+// non-hero object shares it: same speed in a lane means they can never overtake
+// and visually collide. The hero drops quicker to land on the beat.
+const FALL = 2.6 * S;
+
+// The catch beats, in timeline order: the hero catch then the combo montage.
+const BEATS = [
+  { t: T.find, fall: 1.80 * S, big: true, ...M.hit },
+  { t: T.m1,   fall: FALL, ...M.combos[0] },
+  { t: T.m2,   fall: FALL, ...M.combos[1] },
+  { t: T.m3,   fall: FALL, ...M.combos[2] },
+];
+
+// Ambient elements raining through the shot. Every one is timed to still be
+// airborne when the end card lands, so the viewer never sees a miss.
+const AMBIENT = [
+  { born: 2.90, lane: 1, el: 3 },
+  { born: 3.30, lane: 2, el: 0 },
+  { born: 3.80, lane: 0, el: 2 },
+  { born: 4.30, lane: 3, el: 1 },
+  { born: 4.70, lane: 1, el: 0 },
+  { born: 5.10, lane: 2, el: 3 },
+];
+
+// Where the row must sit for grinder `el` to be under lane `lane`.
+const offsetFor = (el, lane) => (lane - el) * SLOT;
+
+// The row holds, then swipes into place just before each catch.
+const ROWKEYS = [
+  { t: T.burst, x: 0 },
+  ...BEATS.map(b => ({ t: b.t - 0.06 * S, x: offsetFor(b.el, b.lane) })),
+];
+function rowOffsetAt(t) {
+  if (t <= ROWKEYS[0].t) return ROWKEYS[0].x;
+  for (let i = 1; i < ROWKEYS.length; i++) {
+    const a = ROWKEYS[i - 1], b = ROWKEYS[i];
+    if (t < b.t) {
+      const lead = Math.min(0.42 * S, b.t - a.t);
+      return lerp(a.x, b.x, smooth((t - (b.t - lead)) / lead));
+    }
+  }
+  return ROWKEYS[ROWKEYS.length - 1].x;
+}
+
+function reset() {
+  rng = mulberry32(20260716);
+  fallers = []; particles = []; ripples = [];
+  shake = { t: 0, mag: 0 };
+  scoreShown = scoreTarget = M.startScore;
+  heroEnt = null; comboFlash = null; curFrame = -1;
+}
+
+function spawnFallers() {
+  fallers = [];
+  BEATS.forEach((b, i) => {
+    fallers.push({
+      el: b.el, lane: b.lane, born: b.t - b.fall, land: b.t, fall: b.fall,
+      px: LANES[b.lane], py: -OBJ_R, hero: i === 0, dead: false, spin: (rng() - 0.5) * 0.6,
+    });
+  });
+  for (const a of AMBIENT) {
+    fallers.push({
+      el: a.el, lane: a.lane, born: a.born * S, land: a.born * S + FALL, fall: FALL,
+      px: LANES[a.lane], py: -OBJ_R, hero: false, dead: false, spin: (rng() - 0.5) * 0.6,
+    });
+  }
+  heroEnt = fallers[0];
+}
+
+function stepFallers() {
+  for (const e of fallers) {
+    if (e.dead || clock < e.born) continue;
+    const p = clamp((clock - e.born) / e.fall, 0, 1);
+    e.py = lerp(-OBJ_R, GRINDER_Y - 96, p);   // lands at the grinder's mouth
+    e.px = LANES[e.lane];
+    e.alpha = clamp((clock - e.born) / 0.14, 0, 1);
+  }
+}
+
+function spawnBurst(x, y, color, n, power) {
+  for (let i = 0; i < n; i++) {
+    const a = rng() * Math.PI * 2, sp = power * (0.3 + rng() * 0.7);
+    particles.push({
+      x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - power * 0.2,
+      life: 1, decay: 1.4 + rng() * 1.2, size: 6 + rng() * 10, color,
+    });
+  }
+}
+
+function stepParticles() {
+  for (const p of particles) { p.vy += 900 * DT; p.x += p.vx * DT; p.y += p.vy * DT; p.life -= p.decay * DT; }
+  particles = particles.filter(p => p.life > 0);
+  for (const r of ripples) r.t += DT;
+  ripples = ripples.filter(r => r.t < r.dur);
+}
+
+let firedBurst = false, firedBeat = [false, false, false, false];
+
+function fireEvents() {
+  if (!firedBurst && clock >= T.burst) { firedBurst = true; spawnFallers(); }
+
+  BEATS.forEach((b, i) => {
+    if (firedBeat[i] || clock < b.t || !fallers.length) return;
+    firedBeat[i] = true;
+    const ent = fallers[i];
+    ent.dead = true;
+    // the burst takes the element's own colour; the flash text stays on-palette
+    const ec = EL[b.el].color;
+    spawnBurst(ent.px, ent.py, ec, b.big ? 30 : 22, b.big ? 780 : 640);
+    ripples.push({ x: ent.px, y: ent.py, t: 0, dur: b.big ? 0.55 : 0.45, color: ec, r0: b.big ? 30 : 24, r1: b.big ? 260 : 200 });
+    shake = { t: b.big ? 0.34 : 0.22, mag: b.big ? 26 : 16 };
+    comboFlash = { txt: b.label, color: col(b.color), born: clock, dur: b.big ? 0.85 : 0.6, pts: b.pts };
+    scoreTarget += b.pts;
+  });
+}
+
+function step() {
+  curFrame++;
+  clock = curFrame * DT;
+  fireEvents();
+  stepFallers();
+  stepParticles();
+  if (shake.t > 0) shake.t -= DT;
+  scoreShown += (scoreTarget - scoreShown) * clamp(DT * 9, 0, 1);
+}
+
+// ==========================================================================
+// drawing
+// ==========================================================================
+function drawBackground(t) {
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.globalAlpha = 0.05; ctx.fillStyle = C.muted;
+  for (let y = 60; y < H; y += 60) for (let x = 60; x < W; x += 60) ctx.fillRect(x, y, 2, 2);
+  ctx.restore();
+  const pulse = 0.5 + 0.5 * Math.sin(t * 6.0);
+  const gy = t < T.outStart ? 190 : H / 2 - 120;
+  const grad = ctx.createRadialGradient(W / 2, gy, 40, W / 2, gy, 720);
+  const amt = t < T.reveal ? 0.16 + 0.06 * pulse : 0.08 + 0.05 * pulse;
+  grad.addColorStop(0, hexA(C.accent, amt));
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+}
+
+function drawVignetteAndGrain() {
+  // Kept gentle and pushed outward: the grinder row sits low in frame and the
+  // template's heavy vignette crushed the element colours down there.
+  const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.42, W / 2, H / 2, H * 0.95);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.30)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.globalAlpha = 0.035; ctx.fillStyle = '#fff';
+  const gr = mulberry32(curFrame * 2654435761 >>> 0);
+  for (let i = 0; i < 260; i++) ctx.fillRect((gr() * W) | 0, (gr() * H) | 0, 2, 2);
+  ctx.restore();
+}
+
+// HUD mirrors the game's own: big score top-left, BEST under it, lives as
+// hearts top-right, combo in accent gold — all inside the Palette.panel band.
+const HUD_COMBO = ['', 'x2 · 5 COMBO', 'x2 · 8 COMBO', 'x3 · 12 COMBO', 'x5 · 20 COMBO'];
+
+function drawHeart(cx, cy, s, color) {
+  ctx.save();
+  ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 14;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + s * 0.78);
+  ctx.bezierCurveTo(cx - s * 1.45, cy - s * 0.32, cx - s * 0.52, cy - s * 1.25, cx, cy - s * 0.36);
+  ctx.bezierCurveTo(cx + s * 0.52, cy - s * 1.25, cx + s * 1.45, cy - s * 0.32, cx, cy + s * 0.78);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawHud(t) {
+  const app = ramp(t, T.boot, T.reveal);
+  if (app <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = app;
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, PLAY_TOP);
+
+  roundRect(28, 26, W - 56, 188, 30);
+  ctx.fillStyle = M.panel; ctx.fill();
+
+  const pop = comboFlash && t >= comboFlash.born && t < comboFlash.born + 0.3
+    ? 1 + 0.12 * (1 - (t - comboFlash.born) / 0.3) : 1;
+  ctx.save();
+  ctx.translate(64, 100); ctx.scale(pop, pop);
+  glowText(num(scoreShown), 0, 0, 80, C.white, null, 0, 'left');
+  ctx.restore();
+  glowText('BEST: ' + num(M.best), 66, 166, 26, C.muted, null, 0, 'left', 'normal');
+
+  for (let i = 0; i < M.lives; i++) drawHeart(W - 88 - i * 58, 96, 16, C.urgent);
+
+  const hits = firedBeat.filter(Boolean).length;
+  if (HUD_COMBO[hits]) glowText(HUD_COMBO[hits], W / 2, 100, 38, C.accent, hexA(C.accent, .5), 14);
+
+  glowText(BRIEF.levelLabel, 40, 258, 24, C.faint, null, 0, 'left', 'normal');
+  glowText(BRIEF.hudTag, W / 2, 258, 24, C.accent, hexA(C.accent, .5), 12, 'center', 'normal', 6);
+
+  drawComboMeter(t);
+  ctx.restore();
+}
+
+// The game is lives-based, not timed — so the template's draining clock becomes
+// a combo meter that FILLS with the montage. The accelerating alarm ticks in the
+// soundtrack now read as the meter closing on max.
+function drawComboMeter(t) {
+  const stops = [0, 0.28, 0.5, 0.75, 1];
+  let ratio = 0;
+  [T.find, T.m1, T.m2, T.m3].forEach((tm, i) => {
+    if (t >= tm - 0.05) ratio = lerp(stops[i], stops[i + 1], ramp(t, tm - 0.05, tm + 0.2));
+  });
+  ratio = clamp(ratio, 0, 1);
+  const y = PLAY_TOP - 12, h = 10;
+  ctx.fillStyle = hexA('#ffffff', 0.06); ctx.fillRect(0, y, W, h);
+  let c = ratio < 0.4 ? C.success : ratio < 0.75 ? C.warn : C.accent;
+  if (t >= T.alarm && ratio > 0.5) c = (0.5 + 0.5 * Math.sin(t * 30)) > 0.5 ? C.accent : C.warn;
+  ctx.save();
+  ctx.shadowColor = c; ctx.shadowBlur = 16; ctx.fillStyle = c;
+  ctx.fillRect(0, y, W * ratio, h);
+  ctx.restore();
+}
+
+// Emoji must come from a colour emoji face, not the monospace HUD font.
+const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+
+// Falling elements: the game draws a tinted disc + the element emoji.
+function drawFallers() {
+  for (const e of fallers) {
+    if (e.dead || clock < e.born) continue;
+    const el = EL[e.el];
+    ctx.save();
+    ctx.globalAlpha = e.alpha ?? 1;
+    ctx.translate(e.px, e.py);
+    ctx.beginPath(); ctx.arc(0, 0, OBJ_R, 0, Math.PI * 2);
+    ctx.fillStyle = hexA(el.color, 0.18); ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = el.color;
+    ctx.shadowColor = el.color; ctx.shadowBlur = e.hero ? 28 : 12;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.font = `${Math.round(OBJ_R * 1.35)}px ${EMOJI_FONT}`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(el.emoji, 0, 2);
+    ctx.restore();
+  }
+}
+
+// The match line — GameConfig.layout.matchLineOffset, scaled.
+function drawCatchLine(t) {
+  const app = ramp(t, T.reveal, T.reveal + 0.45);
+  if (app <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = app * 0.45;
+  ctx.strokeStyle = C.accent; ctx.lineWidth = 2;
+  ctx.setLineDash([16, 14]);
+  ctx.beginPath(); ctx.moveTo(0, CATCH_Y); ctx.lineTo(W, CATCH_Y); ctx.stroke();
+  ctx.restore();
+}
+
+// The 4 grinders. They slide together (locked-row swipe) — the game's core control.
+function drawGrinderRow(t) {
+  const app = ramp(t, T.reveal, T.reveal + 0.45);
+  if (app <= 0) return;
+  const off = rowOffsetAt(t);
+  ctx.save();
+  ctx.globalAlpha = app;
+  ctx.translate(off, lerp(260, 0, easeOutCubic(app)));
+  EL.forEach((el, i) => {
+    const x = LANES[i], wx = x + off;
+    let glow = 0;
+    for (const f of fallers) {
+      if (f.dead || clock < f.born || f.el !== i) continue;
+      const aligned = clamp(1 - Math.abs(f.px - wx) / 130, 0, 1);
+      const closing = clamp(1 - (CATCH_Y - f.py) / 420, 0, 1);
+      glow = Math.max(glow, aligned * closing);
+    }
+    roundRect(x - BOX / 2, GRINDER_Y - BOX / 2, BOX, BOX, 34);
+    ctx.fillStyle = hexA(el.color, 0.12 + 0.16 * glow); ctx.fill();
+    ctx.strokeStyle = el.color; ctx.lineWidth = 4;
+    ctx.shadowColor = el.color; ctx.shadowBlur = 14 + 34 * glow;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.font = `118px ${EMOJI_FONT}`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(el.emoji, x, GRINDER_Y + 4);
+  });
+  ctx.restore();
+}
+
+// The swipe that drags the row into place, shown while the hero element falls.
+function drawSwipeHint(t) {
+  const a = ramp(t, T.scanStart, T.scanStart + 0.25) * (1 - ramp(t, T.find - 0.08, T.find + 0.2));
+  if (a <= 0) return;
+  const off = rowOffsetAt(t);
+  const dir = Math.sign(offsetFor(BEATS[0].el, BEATS[0].lane)) || 1;
+  const x = W / 2 + off, y = GRINDER_Y + 172;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.strokeStyle = hexA(C.white, 0.3); ctx.lineWidth = 6; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x - dir * 165, y); ctx.lineTo(x - dir * 34, y); ctx.stroke();
+  ctx.fillStyle = hexA(C.white, 0.9);
+  ctx.shadowColor = hexA(C.white, 0.8); ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = hexA(C.white, 0.45); ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(x, y, 30 + 16 * (0.5 + 0.5 * Math.sin(t * 7)), 0, Math.PI * 2); ctx.stroke();
+  glowText('SWIPE', x, y + 84, 24, hexA(C.white, 0.75), null, 0, 'center', 'normal', 6);
+  ctx.restore();
+}
+
+function drawRipplesParticles() {
+  for (const r of ripples) {
+    const q = r.t / r.dur;
+    ctx.save();
+    ctx.globalAlpha = (1 - q); ctx.strokeStyle = r.color;
+    ctx.lineWidth = 6 * (1 - q) + 1; ctx.shadowColor = r.color; ctx.shadowBlur = 16;
+    ctx.beginPath(); ctx.arc(r.x, r.y, lerp(r.r0, r.r1, easeOutCubic(q)), 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of particles) {
+    ctx.globalAlpha = clamp(p.life, 0, 1); ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size * clamp(p.life,0,1), 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawComboFlash(t) {
+  if (!comboFlash) return;
+  const q = (t - comboFlash.born) / comboFlash.dur;
+  if (q < 0 || q > 1) return;
+  const pop = easeOutBack(clamp(q / 0.25, 0, 1));
+  const fade = q > 0.7 ? 1 - (q - 0.7) / 0.3 : 1;
+  const y = H * 0.5;
+  ctx.save();
+  ctx.globalAlpha = fade * 0.9;
+  const scrim = ctx.createRadialGradient(W / 2, y + 20, 30, W / 2, y + 20, 500);
+  scrim.addColorStop(0, hexA(C.bg, 0.92)); scrim.addColorStop(0.55, hexA(C.bg, 0.72)); scrim.addColorStop(1, 'rgba(0,0,0,0)');
+  // Rect must outrun the gradient's 500px radius, or its top/bottom edges cut a
+  // visible band across the scene.
+  ctx.fillStyle = scrim; ctx.fillRect(0, y - 520, W, 1040);
+  ctx.restore();
+  ctx.save();
+  ctx.globalAlpha = fade;
+  ctx.translate(W / 2, y); ctx.scale(0.7 + 0.4 * pop, 0.7 + 0.4 * pop);
+  glowText(comboFlash.txt, 0, 0, 96, comboFlash.color, hexA(comboFlash.color, .8), 30, 'center', 'bold', 4);
+  glowText('+' + num(comboFlash.pts), 0, 92, 42, C.white, null, 0, 'center', 'bold');
+  ctx.restore();
+}
+
+function drawIntro(t) {
+  if (t >= T.boot) return;
+  const inn = ramp(t, T.introIn, T.introIn + 0.4);
+  const out = t > T.introHold ? ramp(t, T.introHold, T.boot) : 0;
+  const alpha = inn * (1 - out);
+  const scale = lerp(0.86, 1, easeOutCubic(inn)) * lerp(1, 0.9, out);
+  const gr = mulberry32(Math.floor(t * 30));
+  const glitch = (t < T.introIn + 0.5 || (t > 0.6 * S && t < 0.72 * S)) ? (gr() - 0.5) * 18 : 0;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(W / 2, 780); ctx.scale(scale, scale);
+  glowText(BRIEF.kicker, 0, -170, 30, C.accent, hexA(C.accent,.6), 14, 'center', 'normal', 14);
+  if (MEDIA.logo) {
+    drawLogoImage(0, 0, 780, alpha, glitch);
+  } else {
+    const bs = fitSize(BRIEF.brand, 118, W - 210);
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.5;
+    glowText(BRIEF.brand, glitch - 6, 0, bs, hexA(C.focus,.7), null, 0);
+    glowText(BRIEF.brand, -glitch + 6, 0, bs, hexA(C.accent,.7), null, 0);
+    ctx.restore();
+    glowText(BRIEF.brand, glitch, 0, bs, C.white, hexA(C.accent,.9), 40);
+  }
+  glowText(BRIEF.subtitle, 0, 150, 28, C.muted, null, 0, 'center', 'normal', 6);
+  ctx.restore();
+  const sy = lerp(400, 1200, ramp(t, T.introIn, T.introHold));
+  ctx.save();
+  ctx.globalAlpha = alpha * 0.25;
+  const g = ctx.createLinearGradient(0, sy - 60, 0, sy + 60);
+  g.addColorStop(0, hexA(C.accent, 0)); g.addColorStop(0.5, hexA(C.accent, .5)); g.addColorStop(1, hexA(C.accent, 0));
+  ctx.fillStyle = g; ctx.fillRect(0, sy - 60, W, 120);
+  ctx.restore();
+}
+
+function drawEndCard(t) {
+  if (t < T.outStart) return;
+  const app = ramp(t, T.outCard, T.outCard + 0.5);
+  ctx.save();
+  ctx.globalAlpha = ramp(t, T.outStart, T.outCard);
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+  if (app <= 0) return;
+  const beat = 1 + 0.02 * Math.sin(t * 5);
+  const cy = H * 0.42;
+  ctx.save();
+  ctx.globalAlpha = app;
+
+  // faint background: real gameplay stills if provided, else drifting numbers
+  ctx.save();
+  const dr = mulberry32(7);
+  if (MEDIA.shots.length) {
+    ctx.globalAlpha = app * 0.14;
+    for (let i = 0; i < 8; i++) {
+      const s = MEDIA.shots[i % MEDIA.shots.length];
+      const w = 200, h = w * (s.naturalHeight / s.naturalWidth);
+      const x = dr() * W, y = 240 + dr() * (H - 480), drift = Math.sin(t * 0.8 + i) * 14;
+      if (x > W * 0.10 && x < W * 0.90 && y > cy - 300 && y < cy + 330) continue;
+      ctx.drawImage(s, x - w/2, y - h/2 + drift, w, h);
+    }
+  } else {
+    ctx.globalAlpha = app * 0.08;
+    ctx.font = `bold 60px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = C.muted;
+    for (let i = 0; i < 16; i++) {
+      const x = dr() * W, y = 240 + dr() * (H - 480), drift = Math.sin(t * 0.8 + i) * 14;
+      if (x > W * 0.14 && x < W * 0.86 && y > cy - 300 && y < cy + 330) continue;
+      ctx.fillText(String(100 + ((dr() * 900) | 0)), x, y + drift);
+    }
+  }
+  ctx.restore();
+
+  glowText(BRIEF.kicker, W/2, cy - 292, 34, C.accent, hexA(C.accent,.6), 16, 'center', 'normal', 16);
+  if (MEDIA.logo) {
+    ctx.save(); ctx.translate(W/2, cy - 90); ctx.scale(beat, beat);
+    drawLogoImage(0, 0, 840, app);
+    ctx.restore();
+  } else {
+    ctx.save();
+    ctx.translate(W/2, cy - 90); ctx.scale(beat, beat);
+    const lines = BRIEF.brandLines;
+    lines.forEach((ln, i) => glowText(ln, 0, (i - (lines.length - 1) / 2) * 152, 150, C.white, hexA(C.accent,.9), 44));
+    ctx.restore();
+  }
+  glowText(BRIEF.tagline, W/2, cy + 190, 30, C.muted, null, 0, 'center', 'normal', 2);
+
+  const pulse = 0.5 + 0.5 * Math.sin(t * 6);
+  const bw = 460, bh = 118, bx = W/2 - bw/2, by = cy + 300;
+  const grow = easeOutBack(clamp((t - (T.outCard + 0.15)) / 0.4, 0, 1));
+  ctx.save();
+  ctx.translate(W/2, by + bh/2); ctx.scale(grow, grow); ctx.translate(-W/2, -(by + bh/2));
+  roundRect(bx, by, bw, bh, 22);
+  ctx.fillStyle = C.accent; ctx.shadowColor = C.accent; ctx.shadowBlur = 30 + 20 * pulse; ctx.fill();
+  ctx.shadowBlur = 0;
+  glowText(BRIEF.cta, W/2, by + bh/2 + 2, 46, C.bg, null, 0, 'center', 'bold', 2);
+  ctx.restore();
+
+  glowText(BRIEF.platform, W/2, H - 130, 26, C.muted, null, 0, 'center', 'normal', 6);
+  ctx.restore();
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// ---- optional real game assets (logo / screenshots) ----------------------
+const MEDIA = { logo: null, shots: [] };
+// draws MEDIA.logo centered at (cx,cy) fit to maxW; returns drawn height
+function drawLogoImage(cx, cy, maxW, alpha, glitch = 0) {
+  const img = MEDIA.logo;
+  const w = maxW, h = maxW * (img.naturalHeight / img.naturalWidth);
+  ctx.save();
+  ctx.shadowColor = hexA(C.accent, 0.85); ctx.shadowBlur = 40;
+  if (glitch) { ctx.globalAlpha = alpha * 0.5; ctx.drawImage(img, cx - w/2 + glitch, cy - h/2, w, h); }
+  ctx.globalAlpha = alpha; ctx.drawImage(img, cx - w/2, cy - h/2, w, h);
+  ctx.restore();
+  return h;
+}
+
+function draw() {
+  const t = clock;
+  let sx = 0, sy = 0;
+  if (shake.t > 0) {
+    const sr = mulberry32((curFrame * 99991) >>> 0);
+    const m = shake.mag * (shake.t / 0.34);
+    sx = (sr() - 0.5) * m; sy = (sr() - 0.5) * m;
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  drawBackground(t);
+  ctx.save();
+  ctx.translate(sx, sy);
+  if (t >= T.boot && t < T.outCard) {
+    drawCatchLine(t); drawFallers(); drawGrinderRow(t); drawSwipeHint(t);
+    drawRipplesParticles(); drawHud(t);
+    if (t >= T.find) drawComboFlash(t);
+  }
+  drawIntro(t);
+  ctx.restore();
+  drawEndCard(t);
+  drawVignetteAndGrain();
+  let flash = 0;
+  if (t >= T.find && t < T.find + 0.12) flash = (1 - (t - T.find) / 0.12) * 0.5;
+  if (t >= T.outStart && t < T.outStart + 0.12) flash = Math.max(flash, (1 - (t - T.outStart) / 0.12) * 0.4);
+  if (flash > 0) { ctx.fillStyle = hexA('#ffffff', flash); ctx.fillRect(0, 0, W, H); }
+}
+
+// ==========================================================================
+// recorder API — full replay for determinism
+// ==========================================================================
+function seek(frameIndex) {
+  reset();
+  firedBurst = false; firedBeat = [false, false, false, false];
+  for (let f = 0; f <= frameIndex; f++) step();
+  draw();
+}
+
+window.__FPS = FPS;
+window.__FRAMES = FRAMES;
+window.__DURATION = DURATION;
+window.__seek = seek;
+// single source of truth for the encoder's synced soundtrack
+window.__AUDIO = { fps: FPS, frames: FRAMES, duration: DURATION, marks: T };
+
+// Preload any real game assets first, then signal ready (so the headless
+// renderer never captures a frame before images are decoded).
+function preloadMedia(done) {
+  const jobs = [];
+  if (BRIEF.media && BRIEF.media.logo) jobs.push(['logo', BRIEF.media.logo]);
+  (BRIEF.media && BRIEF.media.shots || []).forEach(s => jobs.push(['shot', s]));
+  let pending = jobs.length;
+  if (!pending) return done();
+  jobs.forEach(([kind, src]) => {
+    const img = new Image();
+    img.onload = img.onerror = () => {
+      if (img.naturalWidth) { if (kind === 'logo') MEDIA.logo = img; else MEDIA.shots.push(img); }
+      if (--pending === 0) done();
+    };
+    img.src = src;
+  });
+}
+
+preloadMedia(() => {
+  window.__ready = true;
+  if (!window.__recording) {
+    let f = 0;
+    const loop = () => { seek(f % FRAMES); f++; setTimeout(() => requestAnimationFrame(loop), 1000 / FPS); };
+    requestAnimationFrame(loop);
+  }
+});
+</script>
+</body>
+</html>

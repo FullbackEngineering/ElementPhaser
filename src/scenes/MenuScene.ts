@@ -52,12 +52,15 @@ export class MenuScene extends Phaser.Scene {
       onClick: () => this.scene.start(SceneKeys.Game)
     });
 
-    this.add
-      .text(cx, GameConfig.designHeight - 70, 'M5 · Skor · Combo · Can', {
-        fontFamily: 'Arial, sans-serif',
-        fontSize: '24px',
-        color: Palette.textDim
-      })
-      .setOrigin(0.5);
+    new Button(this, {
+      x: cx,
+      y: 960,
+      width: 380,
+      height: 88,
+      label: '🏆  Liderlik Tablosu',
+      fill: Palette.panel,
+      textColor: Palette.textLight,
+      onClick: () => this.scene.start(SceneKeys.Leaderboard)
+    });
   }
 }
