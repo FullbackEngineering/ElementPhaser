@@ -106,7 +106,8 @@ export class GameOverScene extends Phaser.Scene {
     }
 
     if (top && this.scene.isActive()) {
-      leaderboardText.setText(`Zirvedeki skor: ${top.score}${top.isMe ? ' (sen)' : ''}`).setVisible(true);
+      const who = top.isMe ? 'Sen' : top.name || 'Bir oyuncu';
+      leaderboardText.setText(`Zirvede ${who}: ${top.score}`).setVisible(true);
     }
   }
 

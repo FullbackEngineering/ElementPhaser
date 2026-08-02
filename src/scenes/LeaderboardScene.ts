@@ -60,6 +60,11 @@ export class LeaderboardScene extends Phaser.Scene {
       status.setText('Liderlik tablosu Gametegra\nSuperApp içinde görünür.');
       return;
     }
+    // Hata ile "gerçekten boş tablo"yu ayır — yoksa sunucu hatası "ilk rekoru sen kır" gibi görünür.
+    if (view.error) {
+      status.setText('Tablo şu an yüklenemedi.\nBiraz sonra tekrar dene.');
+      return;
+    }
     if (view.rows.length === 0) {
       status.setText('Henüz skor yok.\nİlk rekoru sen kır! 🔥');
       return;
@@ -94,8 +99,17 @@ export class LeaderboardScene extends Phaser.Scene {
         .text(left, y, badge, { fontFamily: 'Arial, sans-serif', fontSize: '38px', color })
         .setOrigin(0, 0.5);
 
+      // İsim madalyanın hemen sağında; skor sağa yaslı olduğu için arada sabit bir boşluk kalır.
       this.add
-        .text(right, y, `${row.score}${isMe ? '  (sen)' : ''}`, {
+        .text(left + 78, y, isMe ? `${row.name || 'Sen'}  (sen)` : row.name || 'Oyuncu', {
+          fontFamily: 'Arial, sans-serif',
+          fontSize: '32px',
+          color
+        })
+        .setOrigin(0, 0.5);
+
+      this.add
+        .text(right, y, `${row.score}`, {
           fontFamily: 'Arial, sans-serif',
           fontSize: '38px',
           color,
@@ -107,8 +121,10 @@ export class LeaderboardScene extends Phaser.Scene {
     // Oyuncu top-10 dışındaysa kendi sırasını en altta göster.
     if (view.me && !view.rows.some((r) => r.isMe)) {
       const y = startY + view.rows.length * rowH + 24;
+      // Host sıralamayı vermediyse (rank 0) "0." yazmak yerine sadece skoru göster.
+      const label = view.me.rank > 0 ? `Senin sıran:  ${view.me.rank}.  ·  ${view.me.score}` : `Senin skorun:  ${view.me.score}`;
       this.add
-        .text(cx, y, `Senin sıran:  ${view.me.rank}.  ·  ${view.me.score}`, {
+        .text(cx, y, label, {
           fontFamily: 'Arial, sans-serif',
           fontSize: '32px',
           color: '#ffd166',

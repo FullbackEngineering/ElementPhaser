@@ -1,6 +1,7 @@
 # CLAUDE.md — Element Grinder
 
 Claude Code için proje rehberi. **Detaylı mimari:** `ARCHITECTURE.md`. **Kaynak tasarım:** `GamePlanDoc/` (GDD + Development Plan + görsel/video).
+**Gametegra SDK resmi dokümanları:** `C:/Users/Pekka/Downloads/gametegra-sdk.skill` (zip — `game-methods.md`, `known-issues.md`, `game-over-pattern.md`, `cli-publishing.md`). Kod yorumlarındaki "bkz. api-methods.md / known-issues #0" atıfları buraya işaret eder; repoda değiller, unzip gerekir. **SDK'nın `index.d.ts`'ine güvenme** — gerçek host sözleşmesini yanlış anlatıyor.
 
 ## Proje
 Mobile-first HTML5 **hypercasual refleks** oyunu. Düşen elementleri (🔥 ateş / 💧 su / 🌱 toprak / 💨 hava) doğru öğütücüye denk getir → skor + combo; yanlış/kaçan → can kaybı; 3 can bitince Game Over.
@@ -57,6 +58,7 @@ Kullanıcı bu agent/skill/komutları kurdu; ilgili işte **kullan**:
 - **agent `game-developer` / `typescript-pro` / `javascript-pro`** → implementasyon, refactor, tip mimarisi.
 - **agent `3d-artist`** → görsel yön / asset stil kararları.
 - **agent `postgres-pro`** → (ileride) leaderboard/cloud-save backend.
+- **skill `gametegra-ads`** → reklam (showAd) entegrasyonu/teşhisi. SDK'nın `index.d.ts`'i gerçek sözleşmeyi yanlış anlatıyor; tiplere bakarak yazılan kod sessizce çalışmıyor. Neden'i: `.claude/skills/gametegra-ads/references/postmortem.md`.
 - **skill `clean-code`** → her kod yazımında (zorunlu standart).
 - **skill `mobile-design`** → UI/HUD/menü (M6), dokunma hedefleri, tipografi, touch psikolojisi.
 - **skill `senior-architect` / `senior-fullstack`** → büyük yapısal kararlar.

@@ -126,7 +126,14 @@ export class GameScene extends Phaser.Scene {
 
   private async watchAdForRevive(): Promise<void> {
     this.reviveOverlay?.showLoading();
-    const rewarded = await gametegra.showRewardedAd(GameConfig.revive.adKey, 'game_over_revive');
+    // Reklam katmanı beklenmedik şekilde fırlarsa oyuncu donmuş overlay'de kilitli kalmamalı
+    // (fizik duraklatılmış durumda) — her koşulda bir karara varılır.
+    let rewarded = false;
+    try {
+      rewarded = await gametegra.showRewardedAd(GameConfig.revive.adKey, 'game_over_revive');
+    } catch {
+      rewarded = false;
+    }
     if (!this.scene.isActive()) return; // güvenlik: sahne bu arada kapandıysa dokunma
     if (rewarded) this.doRevive();
     else {
